@@ -3,6 +3,9 @@ import java.util.*;
 
 public class Main {
 
+    // change this to simulate different weeks
+    static int currentWeek = 0;
+
     public static void main(String[] args) {
 
         Scanner scanner = new Scanner(System.in);
@@ -12,9 +15,8 @@ public class Main {
             System.out.println("1. Add Project");
             System.out.println("2. View All Projects");
             System.out.println("3. Generate Weekly Schedule (Smart)");
-            System.out.println("4. Start New Week");
+            System.out.println("4. Simulate Next Week");
             System.out.println("5. Exit");
-
             System.out.print("Choose option: ");
 
             int choice = scanner.nextInt();
@@ -31,11 +33,10 @@ public class Main {
                     generateSchedule();
                     break;
                 case 4:
-                    startNewWeek();
+                    simulateNextWeek();
                     break;
                 case 5:
                     return;
-
                 default:
                     System.out.println("Invalid choice");
             }
@@ -99,14 +100,22 @@ public class Main {
         try (Connection conn = DatabaseConnection.getConnection()) {
 
             ResultSet rs = conn.createStatement()
-                    .executeQuery("SELECT * FROM projects WHERE status = 'PENDING'");
+                    .executeQuery("SELECT * FROM projects");
 
             List<Project> projects = new ArrayList<>();
 
             while (rs.next()) {
                 int id = rs.getInt("id");
                 String title = rs.getString("title");
-                int deadline = rs.getInt("deadline");
+
+                int originalDeadline = rs.getInt("deadline");
+
+                // simulate deadline without modifying DB
+                int deadline = originalDeadline - (currentWeek * 5);
+
+                // skip expired projects
+                if (deadline <= 0) continue;
+
                 int revenue = rs.getInt("revenue");
 
                 double delayRisk = calculateDelayRisk(deadline, revenue);
@@ -114,7 +123,7 @@ public class Main {
                 projects.add(new Project(id, title, deadline, revenue, delayRisk));
             }
 
-            // 🔥 NEW SORTING (SMART)
+            // sort by score
             projects.sort((a, b) -> Double.compare(getScore(b), getScore(a)));
 
             Project[] week = new Project[5];
@@ -131,7 +140,7 @@ public class Main {
                 );
             }
 
-            // scheduling (same as before)
+            // scheduling logic
             for (Project project : projects) {
                 for (int day = Math.min(5, project.getDeadline()) - 1; day >= 0; day--) {
                     if (week[day] == null) {
@@ -150,9 +159,6 @@ public class Main {
                 if (week[i] != null) {
                     System.out.println(days[i] + ": " + week[i].getTitle());
                     total += week[i].getRevenue();
-
-
-
                 } else {
                     System.out.println(days[i] + ": ---");
                 }
@@ -165,7 +171,7 @@ public class Main {
         }
     }
 
-    // ================= DELAY RISK (PSEUDO ML) =================
+    // ================= DELAY RISK =================
     public static double calculateDelayRisk(int deadline, int revenue) {
 
         double revenueFactor = revenue / 10000.0;
@@ -179,27 +185,17 @@ public class Main {
     // ================= SCORE FUNCTION =================
     public static double getScore(Project p) {
 
-        double urgency = 1.0 / (1 + p.getDeadline());  // softer penalty
+        int safeDeadline = Math.max(1, p.getDeadline());
+        double urgency = 1.0 / (1 + safeDeadline);
 
         return (p.getRevenue() * 0.7)
                 + (p.getRevenue() * p.getDelayRisk() * 0.3)
                 + (urgency * 2000);
     }
 
-    // ================= NEW WEEK =================
-    public static void startNewWeek() {
-        try (Connection conn = DatabaseConnection.getConnection()) {
-
-            Statement stmt = conn.createStatement();
-
-            stmt.executeUpdate("UPDATE projects SET deadline = deadline - 5 WHERE status = 'PENDING'");
-            stmt.executeUpdate("UPDATE projects SET status = 'EXPIRED' WHERE deadline <= 0 AND status = 'PENDING'");
-
-            System.out.println("New week started!");
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    // ================= SIMULATE WEEK =================
+    public static void simulateNextWeek() {
+        currentWeek++;
+        System.out.println("Moved to week: " + currentWeek);
     }
-
 }
